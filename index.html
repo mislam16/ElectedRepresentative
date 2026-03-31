@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Elected Officials Finder</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.29/esri/themes/light/main.css">
+  <script src="https://js.arcgis.com/4.29/"></script>
+
+  <style>
+    html, body, #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="viewDiv"></div>
+
+  <script>
+    require([
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/layers/FeatureLayer"
+    ], function(Map, MapView, FeatureLayer) {
+
+      // 🔹 ADD YOUR LAYERS
+      const commissionerLayer = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/CountyCommissioners2024/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      const educationLayer = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/Board_of_Education/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      const MWALayer = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/MWA_Board_Members/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      const stateHouseLayer = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/StateHouse_MBC/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      const stateSenateLayer = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/StateSenate_MBC/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      const USHouseLayer = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/USHouseRepresentative/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      const precinctLayer = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/Voting_Precincts/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      // 🔹 TABLE (non-spatial)
+      const officialsTable = new FeatureLayer({
+        url: "https://maconbibb.spatialitics.net/server/rest/services/Hosted/Elected_Representative/FeatureServer/0",
+        outFields: ["*"]
+      });
+
+      const map = new Map({
+        basemap: "streets",
+        layers: [commissionerLayer, educationLayer, MWALayer, stateHouseLayer, stateSenateLayer, USHouseLayer, precinctLayer]
+      });
+
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+		center: [-83.6486, 32.8407],
+        zoom: 10
+      });
+
+      // 🔥 CLICK EVENT
+      view.on("click", async function(event) {
+
+        const point = event.mapPoint;
+
+        // 🔹 Query all layers
+        const [commissionerResult, educationResult, MWAResult, stateHouseResult, stateSenateResult, USHouseResult, precinctResult] =
+          await Promise.all([
+            commissionerLayer.queryFeatures({ geometry: point, spatialRelationship: "intersects", returnGeometry: false, outFields: ["*"] }),
+            educationLayer.queryFeatures({ geometry: point, spatialRelationship: "intersects", returnGeometry: false, outFields: ["*"] }),
+            MWALayer.queryFeatures({ geometry: point, spatialRelationship: "intersects", returnGeometry: false, outFields: ["*"] }),
+            stateHouseLayer.queryFeatures({ geometry: point, spatialRelationship: "intersects", returnGeometry: false, outFields: ["*"] }),
+            stateSenateLayer.queryFeatures({ geometry: point, spatialRelationship: "intersects", returnGeometry: false, outFields: ["*"] }),
+            USHouseLayer.queryFeatures({ geometry: point, spatialRelationship: "intersects", returnGeometry: false, outFields: ["*"] }),
+            precinctLayer.queryFeatures({ geometry: point, spatialRelationship: "intersects", returnGeometry: false, outFields: ["*"] })
+          ]);
+
+        // 🔹 Extract attributes
+        const commissioner = commissionerResult.features[0]?.attributes;
+        const education = educationResult.features[0]?.attributes;
+        const MWA = MWAResult.features[0]?.attributes;
+        const stateHouse = stateHouseResult.features[0]?.attributes;
+        const stateSenate = stateSenateResult.features[0]?.attributes;
+        const USHouse = USHouseResult.features[0]?.attributes;
+        const precinct = precinctResult.features[0]?.attributes;
+
+        // 🔹 Determine district for table query
+        // Use precinct or commissioner district if available
+        const district = commissioner?.commdist || precinct?.precinct_id;
+
+        // 🔹 Query table for other officials
+        let tableResult = null;
+        if (district) {
+          tableResult = await officialsTable.queryFeatures({
+            where: "district = '" + district + "'",
+            outFields: ["*"]
+          });
+        }
+
+        // 🔥 BUILD POPUP HTML
+        let html = "<div style='font-family:Arial'>";
+
+        if (commissioner) {
+          html += "<h3>County Commissioner</h3>";
+          html += "<b>Name:</b> " + commissioner.name + "<br>";
+          html += "<b>District:</b> " + commissioner.commdist + "<br><br>";
+        }
+
+        if (education) {
+          html += "<h3>School Board</h3>";
+          html += "<b>Name:</b> " + education.name + "<br>";
+          html += "<b>District:</b> " + education.district + "<br><br>";
+        }
+
+        if (MWA) {
+          html += "<h3>MWA Board Member</h3>";
+          html += "<b>Name:</b> " + MWA.name + "<br><br>";
+        }
+
+        if (stateHouse) {
+          html += "<h3>State House Representative</h3>";
+          html += "<b>Name:</b> " + stateHouse.name + "<br><br>";
+        }
+
+        if (stateSenate) {
+          html += "<h3>State Senate Representative</h3>";
+          html += "<b>Name:</b> " + stateSenate.name + "<br><br>";
+        }
+
+        if (USHouse) {
+          html += "<h3>US House Representative</h3>";
+          html += "<b>Name:</b> " + USHouse.name + "<br><br>";
+        }
+
+        // Table (Federal / others)
+        if (tableResult && tableResult.features.length > 0) {
+          html += "<h3>Other Officials</h3>";
+          tableResult.features.forEach(f => {
+            html += "<b>" + f.attributes.title + ":</b> " + f.attributes.name + "<br>";
+          });
+        }
+
+        html += "</div>";
+
+        // 🔥 SHOW ONE POPUP
+        view.popup.open({
+          title: "Elected Officials",
+          content: html,
+          location: point
+        });
+
+      });
+
+    });
+  </script>
+</body>
+</html>
